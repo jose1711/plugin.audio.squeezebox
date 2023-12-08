@@ -203,13 +203,15 @@ class MainService(threading.Thread):
     def start_squeezelite(self):
         '''On supported platforms we include squeezelite binary'''
         playername = xbmc.getInfoLabel("System.FriendlyName")
+        log_msg(f"Serarching squeezelite binary for: {playername}")
         if self.addon.getSetting("disable_auto_squeezelite") != "true":
             sl_binary = get_squeezelite_binary()
             if sl_binary and self.lmsserver:
                 try:
                     sl_output = get_audiodevice(sl_binary)
-                    self.kill_squeezelite()
-                    log_msg("Starting Squeezelite binary - Using audio device: %s" % sl_output)
+                    self.stop_squeezelite()  # try safe stop first before killing it
+                    log_msg(f"Starting Squeezelite binary: {sl_binary}")
+                    log_msg(f"Using audio device: {sl_output}")
                     args = [sl_binary, "-s", self.lmsserver.host, "-a", "80", "-C", "1", "-m",
                             self.lmsserver.playerid, "-n", playername, "-M", "Kodi", "-o", sl_output]
                     startupinfo = None
@@ -219,10 +221,15 @@ class MainService(threading.Thread):
                     self._sl_exec = subprocess.Popen(args, startupinfo=startupinfo, stderr=subprocess.STDOUT)
                 except Exception as exc:
                     log_exception(__name__, exc)
-        if not self._sl_exec:
-            log_msg("The Squeezelite binary was not automatically started, "
+            else:
+                log_msg("Squeezelite binrary not found.")
+        else:
+            log_msg("Squeezelite binrary shall not start automatically : config")
+
+        if not self._sl_exec or self._sl_exec.poll() != None:
+            log_msg("The Squeezelite binary was not automatically started or start failed, "
                     "you should make sure of starting it yourself, e.g. as a service.")
-            self._sl_exec = False
+            self._sl_exec = None
 
     def stop_squeezelite(self):
         '''stop squeezelite if supported'''
