@@ -224,16 +224,17 @@ class LMSServer:
         '''get info from json api'''
         result = {}
         try:
+            #log_msg(f"ToLms: {url}, data: {params}")
             response = requests.post(url, data=json.dumps(params), timeout=20)
             if response and response.content and response.status_code == 200:
                 result = json.loads(response.content.decode('utf-8', 'replace'))
                 if "result" in result:
                     result = result["result"]
             else:
-                log_msg("Invalid or empty response from server - command: %s - server response: %s" %
-                        (cmd, response.status_code))
-        except Exception:
-            log_exception(__name__, "Server is offline or connection error...")
+                log_msg("Invalid or empty response from server - command: xxx - server response: %s" %
+                        (response.status_code))
+        except Exception as exept:
+            log_exception(__name__, f"Server is offline or connection error...{exept}")
 
         #log_msg("%s --> %s" %(params, result))
         return result
