@@ -180,9 +180,9 @@ class MainService(threading.Thread):
                 elif self.kodiplayer.playlist.getposition() != self.lmsserver.cur_index:
                     # other track requested
                     self.kodiplayer.is_playing = False # it seems that xbmc.player calls the OnPlayBackStopped function if the play function is called while already playing.
-                    log_msg("other track requested by lms server")
+                    log_msg("index mismatch: other track requested by lms server")
                     self.kodiplayer.play(self.kodiplayer.playlist, startpos=self.lmsserver.cur_index)
-                elif self.lmsserver.status["title"] != xbmc.getInfoLabel("MusicPlayer.Title"):
+                elif self.lmsserver.status["title"].strip() != xbmc.getInfoLabel("MusicPlayer.Title").strip():
                     # monitor if title still matches
                     log_msg("title mismatch - updating playlist...")
                     self.kodiplayer.update_playlist()
