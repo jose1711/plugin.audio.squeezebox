@@ -224,16 +224,17 @@ class LMSServer:
         '''get info from json api'''
         result = {}
         try:
+            #log_msg(f"ToLms: {url}, data: {params}")
             response = requests.post(url, data=json.dumps(params), timeout=20)
             if response and response.content and response.status_code == 200:
                 result = json.loads(response.content.decode('utf-8', 'replace'))
                 if "result" in result:
                     result = result["result"]
             else:
-                log_msg("Invalid or empty response from server - command: %s - server response: %s" %
-                        (cmd, response.status_code))
-        except Exception:
-            log_exception(__name__, "Server is offline or connection error...")
+                log_msg("Invalid or empty response from server - command: xxx - server response: %s" %
+                        (response.status_code))
+        except Exception as exept:
+            log_exception(__name__, f"Server is offline or connection error...{exept}")
 
         #log_msg("%s --> %s" %(params, result))
         return result
@@ -305,13 +306,13 @@ class LMSDiscovery(object):
         sock.settimeout(lms_timeout)
         sock.bind(('', 0))
         try:
-            sock.sendto(lms_msg, (lms_ip, lms_port))
+            sock.sendto(lms_msg.encode('utf-8'), (lms_ip, lms_port))
             while True:
                 try:
                     data, server = sock.recvfrom(1024)
                     host, _ = server
                     if data.startswith(b'E'):
-                        port = data.split("\x04")[1]
+                        port = data.split(b'\x04')[1]
                         entries.append({'port': int(port),
                                         'data': data,
                                         'from': server,

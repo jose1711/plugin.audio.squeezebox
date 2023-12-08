@@ -113,6 +113,11 @@ class MainService(threading.Thread):
 
     def monitor_lms(self):
         '''monitor the state of the self.lmsserver/player'''
+
+        # Try to restart squeezelite, if it didn't start because of
+        # audio devices claimed by pulseaudio.
+        self.checkRestartSqueezelite()
+
         # poll the status every interval
         self.lmsserver.update_status()
 
@@ -169,13 +174,15 @@ class MainService(threading.Thread):
                 elif not xbmc.getCondVisibility("Player.Paused") and self.lmsserver.mode == "pause":
                     # playback paused
                     log_msg("pause requested by lms server")
-                    self.kodiplayer.pause()
+                    #self.kodiplayer.pause()
+                    # miw: definitively not what we want but doesn't trigger unpause
+                    self.kodiplayer.stop()
                 elif self.kodiplayer.playlist.getposition() != self.lmsserver.cur_index:
                     # other track requested
                     self.kodiplayer.is_playing = False # it seems that xbmc.player calls the OnPlayBackStopped function if the play function is called while already playing.
-                    log_msg("other track requested by lms server")
+                    log_msg("index mismatch: other track requested by lms server")
                     self.kodiplayer.play(self.kodiplayer.playlist, startpos=self.lmsserver.cur_index)
-                elif self.lmsserver.status["title"] != xbmc.getInfoLabel("MusicPlayer.Title"):
+                elif self.lmsserver.status["title"].strip() != xbmc.getInfoLabel("MusicPlayer.Title").strip():
                     # monitor if title still matches
                     log_msg("title mismatch - updating playlist...")
                     self.kodiplayer.update_playlist()
@@ -201,13 +208,15 @@ class MainService(threading.Thread):
     def start_squeezelite(self):
         '''On supported platforms we include squeezelite binary'''
         playername = xbmc.getInfoLabel("System.FriendlyName")
+        log_msg(f"Serarching squeezelite binary for: {playername}")
         if self.addon.getSetting("disable_auto_squeezelite") != "true":
             sl_binary = get_squeezelite_binary()
             if sl_binary and self.lmsserver:
                 try:
                     sl_output = get_audiodevice(sl_binary)
-                    self.kill_squeezelite()
-                    log_msg("Starting Squeezelite binary - Using audio device: %s" % sl_output)
+                    self.stop_squeezelite()  # try safe stop first before killing it
+                    log_msg(f"Starting Squeezelite binary: {sl_binary}")
+                    log_msg(f"Using audio device: {sl_output}")
                     args = [sl_binary, "-s", self.lmsserver.host, "-a", "80", "-C", "1", "-m",
                             self.lmsserver.playerid, "-n", playername, "-M", "Kodi", "-o", sl_output]
                     startupinfo = None
@@ -217,15 +226,50 @@ class MainService(threading.Thread):
                     self._sl_exec = subprocess.Popen(args, startupinfo=startupinfo, stderr=subprocess.STDOUT)
                 except Exception as exc:
                     log_exception(__name__, exc)
-        if not self._sl_exec:
-            log_msg("The Squeezelite binary was not automatically started, "
+            else:
+                log_msg("Squeezelite binrary not found.")
+        else:
+            log_msg("Squeezelite binrary shall not start automatically : config")
+
+        if not self._sl_exec or self._sl_exec.poll() != None:
+            log_msg("The Squeezelite binary was not automatically started or start failed, "
                     "you should make sure of starting it yourself, e.g. as a service.")
-            self._sl_exec = False
+            self._sl_exec = None
 
     def stop_squeezelite(self):
         '''stop squeezelite if supported'''
+        isStopped = True
         if self._sl_exec:
             self._sl_exec.terminate()
+            try:
+                exitCode = self._sl_exec.wait(1)
+                if exitCode == None:
+                    isStopped = False
+            except Exception as exc:
+                log_exception(__name__, exc)
+                log_msg("Coudn't stop squeezelite, will kill but not dispose later")
+                isStopped = False
+            self._sl_exec = None
+        if not isStopped:
+            # shut it down finally, might create zombies
+            self.kill_squeezelite()
+        return isStopped
+
+    def disposeZombifiedSqueezelite(self):
+        '''Remove possibly zombified squeezelite process'''
+        '''This can happen if squeezelite has been started but'''
+        '''cannot claim the audio output device due to pulseaudio-one-and-only-hero'''
+        if self._sl_exec:
+            retCode = self._sl_exec.poll()
+            if retCode != None:
+                log_msg(f"squeezelite stopped with return code: {retCode}")
+                self.stop_squeezelite()
+
+    def checkRestartSqueezelite(self):
+        '''Try to restart squeezelite if it died for obious reasons (see disposeZombifiedSqueezelite)'''
+        self.disposeZombifiedSqueezelite()
+        if self._sl_exec == None:
+            self.start_squeezelite();
 
     @staticmethod
     def kill_squeezelite():
