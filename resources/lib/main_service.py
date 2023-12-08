@@ -113,6 +113,11 @@ class MainService(threading.Thread):
 
     def monitor_lms(self):
         '''monitor the state of the self.lmsserver/player'''
+
+        # Try to restart squeezelite, if it didn't start because of
+        # audio devices claimed by pulseaudio.
+        self.checkRestartSqueezelite()
+
         # poll the status every interval
         self.lmsserver.update_status()
 
@@ -233,8 +238,38 @@ class MainService(threading.Thread):
 
     def stop_squeezelite(self):
         '''stop squeezelite if supported'''
+        isStopped = True
         if self._sl_exec:
             self._sl_exec.terminate()
+            try:
+                exitCode = self._sl_exec.wait(1)
+                if exitCode == None:
+                    isStopped = False
+            except Exception as exc:
+                log_exception(__name__, exc)
+                log_msg("Coudn't stop squeezelite, will kill but not dispose later")
+                isStopped = False
+            self._sl_exec = None
+        if not isStopped:
+            # shut it down finally, might create zombies
+            self.kill_squeezelite()
+        return isStopped
+
+    def disposeZombifiedSqueezelite(self):
+        '''Remove possibly zombified squeezelite process'''
+        '''This can happen if squeezelite has been started but'''
+        '''cannot claim the audio output device due to pulseaudio-one-and-only-hero'''
+        if self._sl_exec:
+            retCode = self._sl_exec.poll()
+            if retCode != None:
+                log_msg(f"squeezelite stopped with return code: {retCode}")
+                self.stop_squeezelite()
+
+    def checkRestartSqueezelite(self):
+        '''Try to restart squeezelite if it died for obious reasons (see disposeZombifiedSqueezelite)'''
+        self.disposeZombifiedSqueezelite()
+        if self._sl_exec == None:
+            self.start_squeezelite();
 
     @staticmethod
     def kill_squeezelite():
