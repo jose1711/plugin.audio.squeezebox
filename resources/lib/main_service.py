@@ -169,7 +169,9 @@ class MainService(threading.Thread):
                 elif not xbmc.getCondVisibility("Player.Paused") and self.lmsserver.mode == "pause":
                     # playback paused
                     log_msg("pause requested by lms server")
-                    self.kodiplayer.pause()
+                    #self.kodiplayer.pause()
+                    # miw: definitively not what we want but doesn't trigger unpause
+                    self.kodiplayer.stop()
                 elif self.kodiplayer.playlist.getposition() != self.lmsserver.cur_index:
                     # other track requested
                     self.kodiplayer.is_playing = False # it seems that xbmc.player calls the OnPlayBackStopped function if the play function is called while already playing.
